@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}展柜照度剂量复核{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">展柜照度剂量复核</a>
+    <nav>
+      <a href="/">名单</a>
+      <a href="/samples/placements.csv">摆放表示例</a>
+      <a href="/samples/doses.csv">剂量表示例</a>
+    </nav>
+  </header>
+
+  <main>
+    {% if message %}
+      <div class="flash flash-ok">{{ message }}</div>
+    {% endif %}
+    {% if errors %}
+      <div class="flash flash-error">
+        <strong>换报未生效，原数据与名单保持不变。</strong>
+        <ul>
+          {% for error in errors %}<li>{{ error }}</li>{% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer>
+    <p>所有时间均为 UTC。摆放区间含起点、不含终点；剂量按整小时登记（勒克斯·分钟）。</p>
+  </footer>
+</body>
+</html>

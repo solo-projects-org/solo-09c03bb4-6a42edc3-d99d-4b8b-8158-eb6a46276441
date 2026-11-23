@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ exhibit.exhibit_id }} · 剂量复核{% endblock %}
+{% block content %}
+<section class="panel">
+  <p><a href="/">← 返回名单</a></p>
+  <h2>{{ exhibit.exhibit_id }} <span class="badge badge-{{ exhibit.status }}">{{ exhibit.status_label }}</span></h2>
+  <dl class="facts">
+    <div><dt>剂量下界</dt><dd>{{ exhibit.dose_low | number }} lx·min</dd></div>
+    <div><dt>剂量上界</dt><dd>{{ exhibit.dose_high | number }} lx·min</dd></div>
+    <div><dt>阈值（计算时）</dt><dd>{{ exhibit.dose_threshold | number }} lx·min</dd></div>
+    <div><dt>累计受照</dt><dd>{{ exhibit.total_minutes }} 分钟 / 涉及 {{ exhibit.total_hours }} 个柜·小时</dd></div>
+  </dl>
+  <p class="verdict-note">
+    {% if exhibit.status == 'over' %}<strong>已可判定：</strong>即使按最不利的照度分布估算，剂量下界 {{ exhibit.dose_low | number }} 也已高于阈值 {{ exhibit.dose_threshold | number }}，应优先复核。
+    {% elif exhibit.status == 'not_over' %}<strong>已可判定：</strong>即使按最不利的照度分布估算，剂量上界 {{ exhibit.dose_high | number }} 也未超过阈值 {{ exhibit.dose_threshold | number }}。
+    {% else %}<strong>尚不能判定：</strong>阈值落在上下界 {{ exhibit.dose_low | number }}–{{ exhibit.dose_high | number }} 之间，需补测缺测小时或核对柜内实际照度。
+    {% endif %}
+  </p>
+
+  <h3>摆放记录</h3>
+  <table>
+    <thead><tr><th>柜子</th><th>起点（含）</th><th>终点（不含）</th></tr></thead>
+    <tbody>
+      {% for shift in exhibit.placements %}
+      <tr>
+        <td>{{ shift.cabinet_id }}</td>
+        <td>{{ shift.start_min | minute }}</td>
+        <td>{{ shift.end_min | minute }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h3>逐柜·小时明细</h3>
+  <table>
+    <thead>
+      <tr><th>柜子</th><th>小时</th><th>柜内分钟</th><th>小时总量</th><th>下界</th><th>上界</th></tr>
+    </thead>
+    <tbody>
+      {% for hour in exhibit.detail %}
+      <tr class="{{ '' if hour.measured else 'row-missing' }}">
+        <td>{{ hour.cabinet_id }}</td>
+        <td>{{ hour.hour_min | hour }}</td>
+        <td>{{ hour.minutes }}</td>
+        <td>{% if hour.measured %}{{ hour.dose | number }}{% else %}<span class="muted">缺测</span>{% endif %}</td>
+        <td>{{ hour.low | number }}</td>
+        <td>{{ hour.high | number }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint">同一小时多次进出同一柜的分钟数已合并，共用该柜该小时的总量。</p>
+</section>
+{% endblock %}

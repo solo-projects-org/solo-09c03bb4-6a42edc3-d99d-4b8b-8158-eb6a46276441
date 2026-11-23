@@ -1,0 +1,14 @@
+services:
+  web:
+    build: .
+    image: exhibit-dose-review:latest
+    ports:
+      - "8000:8000"
+    environment:
+      EXHIBIT_DB: /data/exhibits.sqlite3
+    volumes:
+      - exhibit-data:/data
+    restart: unless-stopped
+
+volumes:
+  exhibit-data:

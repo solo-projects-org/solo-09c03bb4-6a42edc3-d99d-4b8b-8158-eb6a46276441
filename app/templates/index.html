@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="cards">
+  <div class="card">
+    <div class="card-label">照度上限</div>
+    <div class="card-value">{% if config %}{{ config.illuminance_cap | number }} <span class="unit">lx</span>{% else %}<span class="muted">未设定</span>{% endif %}</div>
+  </div>
+  <div class="card">
+    <div class="card-label">剂量阈值</div>
+    <div class="card-value">{% if config %}{{ config.dose_threshold | number }} <span class="unit">lx·min</span>{% else %}<span class="muted">未设定</span>{% endif %}</div>
+  </div>
+  <div class="card card-over">
+    <div class="card-label">确定超限</div>
+    <div class="card-value">{{ summary.over }}</div>
+  </div>
+  <div class="card card-pending">
+    <div class="card-label">待核</div>
+    <div class="card-value">{{ summary.pending }}</div>
+  </div>
+  <div class="card card-ok">
+    <div class="card-label">确定未超</div>
+    <div class="card-value">{{ summary.not_over }}</div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>换报</h2>
+  <form class="upload" method="post" action="/submit" enctype="multipart/form-data">
+    <div class="field">
+      <label for="placements">摆放表（exhibit_id, cabinet_id, start, end）</label>
+      <input id="placements" type="file" name="placements" accept=".csv,text/csv">
+      {% if meta.placements %}
+        <p class="hint">当前：{{ meta.placements.row_count }} 行，{{ meta.placements.source_name }}，{{ meta.placements.reported_at | iso }}</p>
+      {% else %}
+        <p class="hint">尚未上传</p>
+      {% endif %}
+    </div>
+    <div class="field">
+      <label for="doses">剂量表（cabinet_id, hour, dose_luxmin）</label>
+      <input id="doses" type="file" name="doses" accept=".csv,text/csv">
+      {% if meta.doses %}
+        <p class="hint">当前：{{ meta.doses.row_count }} 行，{{ meta.doses.source_name }}，{{ meta.doses.reported_at | iso }}</p>
+      {% else %}
+        <p class="hint">尚未上传</p>
+      {% endif %}
+    </div>
+    <div class="field field-inline">
+      {% if not config %}
+        <div>
+          <label for="illuminance_cap">照度上限（勒克斯）</label>
+          <input id="illuminance_cap" type="number" step="any" min="0" name="illuminance_cap"
+                 value="{{ form.illuminance_cap if form else '' }}" placeholder="如 50">
+        </div>
+        <div>
+          <label for="dose_threshold">展品剂量阈值（勒克斯·分钟）</label>
+          <input id="dose_threshold" type="number" step="any" min="0" name="dose_threshold"
+                 value="{{ form.dose_threshold if form else '' }}" placeholder="如 12000">
+        </div>
+      {% else %}
+        <p class="hint">照度上限与剂量阈值已固定，换报不可更改。</p>
+      {% endif %}
+    </div>
+    <button type="submit">提交换报</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>展品名单</h2>
+  <div class="tabs">
+    <a href="/" class="{{ 'active' if not active_status else '' }}">全部</a>
+    {% for key, label in status_labels.items() %}
+      <a href="/?status={{ key }}" class="{{ 'active' if active_status == key else '' }}">{{ label }}（{{ summary[key] }}）</a>
+    {% endfor %}
+  </div>
+
+  {% if assessments %}
+  <table>
+    <thead>
+      <tr>
+        <th>展品</th>
+        <th>柜子</th>
+        <th>累计分钟</th>
+        <th>涉及小时</th>
+        <th>剂量下界</th>
+        <th>剂量上界</th>
+        <th>结论</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in assessments %}
+      <tr class="row-{{ item.status }}">
+        <td><a href="/exhibits/{{ item.exhibit_id }}">{{ item.exhibit_id }}</a></td>
+        <td>{{ item.detail | map(attribute='cabinet_id') | unique | join(', ') }}</td>
+        <td>{{ item.total_minutes }}</td>
+        <td>{{ item.total_hours }}</td>
+        <td>{{ item.dose_low | number }}</td>
+        <td>{{ item.dose_high | number }}</td>
+        <td><span class="badge badge-{{ item.status }}">{{ item.status_label }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">名单为空{% if config %}，请上传摆放表与剂量表{% else %}，请先完成首次上传{% endif %}。</p>
+  {% endif %}
+</section>
+{% endblock %}
