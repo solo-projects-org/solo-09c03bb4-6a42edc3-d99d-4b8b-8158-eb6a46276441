@@ -104,6 +104,11 @@ def create_app(db_path: str | None = None) -> FastAPI:
             f"{detail}换报成功：重算 {result.recomputed} 件展品，"
             f"撤下 {result.pruned} 条失效条目"
         )
+        if result.replay is not None and result.replay.performed:
+            message += (
+                f"；分报复盘已随本次双表换报生效，试算 {result.replay.scope_count}"
+                f" 件展品，其中 {result.replay.flagged} 件会在分报时暂时确定超限"
+            )
         if result.missing_cabinet_hours:
             cabinets = sorted({c for c, _ in result.missing_cabinet_hours})
             message += (
@@ -143,6 +148,7 @@ def _index_context(service: ReportService) -> dict:
         "assessments": service.list_assessments(),
         "summary": service.status_summary(),
         "status_labels": assess.STATUS_LABELS,
+        "replay": service.get_replay(),
         "active_status": "",
         "message": None,
         "errors": None,

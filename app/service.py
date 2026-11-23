@@ -18,7 +18,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Iterable, Iterator
 
-from . import assess
+from . import assess, replay
 from .assess import Placement
 from .csvio import DoseRow, PlacementRow, parse_doses, parse_placements
 from .db import Store
@@ -86,6 +86,16 @@ class Config:
 
 
 @dataclass
+class ReplaySummary:
+    """Outcome of the split-submission replay for one joint replacement."""
+
+    scope_count: int = 0
+    flagged: int = 0
+    is_first_upload: bool = False
+    performed: bool = False
+
+
+@dataclass
 class SubmitResult:
     ticket: int = 0
     replaced: list[str] = field(default_factory=list)
@@ -96,6 +106,7 @@ class SubmitResult:
     pruned: int = 0
     missing_cabinet_hours: list[tuple[str, int]] = field(default_factory=list)
     status_counts: dict[str, int] = field(default_factory=dict)
+    replay: ReplaySummary | None = None
 
 
 class ReportService:
@@ -172,6 +183,32 @@ class ReportService:
         for row in rows:
             summary[row["status"]] = row["n"]
         return summary
+
+    def get_replay(self) -> dict | None:
+        """Latest split-submission replay, or ``None`` when none exists.
+
+        A replay exists only after a successful joint replacement that was
+        not the first upload.  Single-table replacements and failed
+        submissions keep the previous review, so the result stays queryable
+        across restarts.
+        """
+
+        conn = self.store.connect()
+        try:
+            header = conn.execute(
+                "SELECT * FROM replay_review WHERE id = 1"
+            ).fetchone()
+            if header is None:
+                return None
+            rows = conn.execute(
+                "SELECT * FROM replay_review_rows ORDER BY exhibit_id"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        result = dict(header)
+        result["rows"] = [_decorate_replay_row(dict(row)) for row in rows]
+        return result
 
     # ----------------------------------------------------------------- writes
     def submit(
@@ -304,6 +341,13 @@ def _apply(
             for r in pending.placements
         ]
 
+    # The replay only accompanies a successful joint replacement that is not
+    # the very first upload; single-table swaps leave the previous review alone.
+    joint_replacement = (
+        pending.placements is not None and pending.doses is not None
+    )
+    before_meta = _read_meta_seqs(conn) if joint_replacement else None
+
     affected: set[str] = set()
     if pending.placements is not None:
         # Whole-table replacement: an exhibit is affected only when its own
@@ -374,6 +418,37 @@ def _apply(
     result.missing_cabinet_hours = missing_cabinet_hours(
         new_placements, new_doses
     )
+
+    if joint_replacement:
+        # ``config`` was created inside this transaction for a first upload;
+        # an empty report_meta marks it, so the replay stays empty by rule.
+        first_upload = not (before_meta or {}).get("placements")
+        if not first_upload:
+            scope, review_rows = replay.build_review(
+                old_placements,
+                new_placements,
+                old_doses,
+                new_doses,
+                config.illuminance_cap,
+                config.dose_threshold,
+            )
+            after_meta = _read_meta_seqs(conn)
+            _write_replay(
+                conn,
+                review_rows,
+                scope_count=len(scope),
+                before_meta=before_meta,
+                after_meta=after_meta,
+                computed_at=computed_at,
+            )
+            result.replay = ReplaySummary(
+                scope_count=len(scope),
+                flagged=len(review_rows),
+                is_first_upload=False,
+                performed=True,
+            )
+        else:
+            result.replay = ReplaySummary(is_first_upload=True)
 
 
 # ------------------------------------------------------------------ helpers
@@ -518,6 +593,69 @@ def _write_meta(
     )
 
 
+def _read_meta_seqs(conn: sqlite3.Connection) -> dict[str, int]:
+    """Current report version numbers; a missing kind has no version yet."""
+
+    rows = conn.execute("SELECT kind, seq FROM report_meta").fetchall()
+    return {row["kind"]: row["seq"] for row in rows}
+
+
+def _write_replay(
+    conn: sqlite3.Connection,
+    rows: list[replay.ReviewRow],
+    *,
+    scope_count: int,
+    before_meta: dict[str, int],
+    after_meta: dict[str, int],
+    computed_at: str,
+) -> None:
+    """Persist one replay, replacing any previous one.
+
+    Only the review outcomes and the four report version numbers (meta seq)
+    are kept; the underlying reports are identified, not copied.
+    """
+
+    conn.execute("DELETE FROM replay_review_rows")
+    conn.execute("DELETE FROM replay_review")
+    conn.execute(
+        """
+        INSERT INTO replay_review (
+            id, computed_at, scope_count,
+            placements_before_seq, doses_before_seq,
+            placements_after_seq, doses_after_seq
+        ) VALUES (1, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            computed_at,
+            scope_count,
+            before_meta["placements"],
+            before_meta["doses"],
+            after_meta["placements"],
+            after_meta["doses"],
+        ),
+    )
+    conn.executemany(
+        """
+        INSERT INTO replay_review_rows (
+            exhibit_id, before_status, placement_only_status, dose_only_status,
+            after_status, placement_only_triggers, dose_only_triggers
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                row.exhibit_id,
+                row.before_status,
+                row.placement_only_status,
+                row.dose_only_status,
+                row.after_status,
+                int(row.placement_only_triggers),
+                int(row.dose_only_triggers),
+            )
+            for row in rows
+        ],
+    )
+
+
 def missing_cabinet_hours(
     placements: Iterable[Placement],
     doses: dict[tuple[str, int], float],
@@ -535,4 +673,25 @@ def missing_cabinet_hours(
 def _decorate(row: dict) -> dict:
     row["detail"] = json.loads(row.pop("detail_json") or "[]")
     row["status_label"] = assess.STATUS_LABELS.get(row["status"], row["status"])
+    return row
+
+
+def _decorate_replay_row(row: dict) -> dict:
+    row["placement_only_triggers"] = bool(row["placement_only_triggers"])
+    row["dose_only_triggers"] = bool(row["dose_only_triggers"])
+    for key in (
+        "before_status",
+        "placement_only_status",
+        "dose_only_status",
+        "after_status",
+    ):
+        row[key.replace("_status", "_status_label")] = assess.STATUS_LABELS.get(
+            row[key], row[key]
+        )
+    triggers = []
+    if row["placement_only_triggers"]:
+        triggers.append(replay.SCENARIO_LABELS[replay.SCENARIO_PLACEMENT_ONLY])
+    if row["dose_only_triggers"]:
+        triggers.append(replay.SCENARIO_LABELS[replay.SCENARIO_DOSE_ONLY])
+    row["trigger_labels"] = triggers
     return row

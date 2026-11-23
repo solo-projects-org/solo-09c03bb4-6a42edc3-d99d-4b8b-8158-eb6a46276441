@@ -78,6 +78,9 @@ tbody tr:hover { background: #f0f4f9; }
 .badge-pending { background: #fef0c7; color: var(--pending); }
 .badge-not_over { background: #d1fadf; color: var(--ok); }
 
+.trigger-mark { color: var(--over); font-size: 0.78rem; font-weight: 700; margin-left: 0.35rem; white-space: nowrap; }
+.trigger-cell { color: var(--over); font-weight: 600; }
+
 .facts { display: flex; gap: 2rem; flex-wrap: wrap; margin: 0.5rem 0 1rem; }
 .facts dt { color: var(--muted); font-size: 0.85rem; }
 .facts dd { margin: 0; font-size: 1.1rem; font-weight: 600; }

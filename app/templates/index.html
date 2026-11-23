@@ -65,6 +65,58 @@
 </section>
 
 <section class="panel">
+  <h2>分报复盘（最近一次成功的双表换报）</h2>
+  {% if not replay %}
+    <p class="empty">暂无复盘：首报时复盘为空；完成一次同时替换两张表的换报后，复盘随名单一起生效。单表换报或换报失败不会清除上次复盘。</p>
+  {% else %}
+    <p class="hint">
+      复盘时间：{{ replay.computed_at | iso }} ｜
+      试算范围 {{ replay.scope_count }} 件（摆放有变或触及剂量改动柜·小时的展品），
+      其中 {{ replay.rows | length }} 件会在分报时暂时被判为确定超限。
+    </p>
+    <p class="hint">
+      所据报表版本号（换报前 → 换报后）：
+      摆放表 v{{ replay.placements_before_seq }} → v{{ replay.placements_after_seq }}；
+      剂量表 v{{ replay.doses_before_seq }} → v{{ replay.doses_after_seq }}。
+    </p>
+    {% if replay.rows %}
+    <table>
+      <thead>
+        <tr>
+          <th>展品</th>
+          <th>换报前</th>
+          <th>只换摆放表</th>
+          <th>只换剂量表</th>
+          <th>换报后</th>
+          <th>会触发确定超限的分报顺序</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in replay.rows %}
+        <tr>
+          <td><a href="/exhibits/{{ row.exhibit_id }}">{{ row.exhibit_id }}</a></td>
+          <td><span class="badge badge-{{ row.before_status }}">{{ row.before_status_label }}</span></td>
+          <td>
+            <span class="badge badge-{{ row.placement_only_status }}">{{ row.placement_only_status_label }}</span>
+            {% if row.placement_only_triggers %}<span class="trigger-mark">▲ 触发</span>{% endif %}
+          </td>
+          <td>
+            <span class="badge badge-{{ row.dose_only_status }}">{{ row.dose_only_status_label }}</span>
+            {% if row.dose_only_triggers %}<span class="trigger-mark">▲ 触发</span>{% endif %}
+          </td>
+          <td><span class="badge badge-{{ row.after_status }}">{{ row.after_status_label }}</span></td>
+          <td class="trigger-cell">{{ row.trigger_labels | join('、') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">本次双表换报的试算范围内，没有展品会因分报而暂时确定超限。</p>
+    {% endif %}
+  {% endif %}
+</section>
+
+<section class="panel">
   <h2>展品名单</h2>
   <div class="tabs">
     <a href="/" class="{{ 'active' if not active_status else '' }}">全部</a>

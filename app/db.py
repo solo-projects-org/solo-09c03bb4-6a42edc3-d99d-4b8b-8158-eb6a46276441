@@ -69,6 +69,30 @@ CREATE TABLE IF NOT EXISTS report_meta (
     seq         INTEGER NOT NULL DEFAULT 0
 );
 
+-- Split-submission replay.  A header row exists only after a successful joint
+-- (both-report) replacement that was not the very first upload; single-table
+-- replacements and failed submissions leave the previous review untouched,
+-- so it survives restarts together with the report version numbers (meta seq).
+CREATE TABLE IF NOT EXISTS replay_review (
+    id                         INTEGER PRIMARY KEY CHECK (id = 1),
+    computed_at                TEXT NOT NULL,
+    scope_count                INTEGER NOT NULL,
+    placements_before_seq      INTEGER NOT NULL,
+    doses_before_seq           INTEGER NOT NULL,
+    placements_after_seq       INTEGER NOT NULL,
+    doses_after_seq            INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS replay_review_rows (
+    exhibit_id                TEXT PRIMARY KEY,
+    before_status             TEXT NOT NULL,
+    placement_only_status     TEXT NOT NULL,
+    dose_only_status          TEXT NOT NULL,
+    after_status              TEXT NOT NULL,
+    placement_only_triggers   INTEGER NOT NULL,
+    dose_only_triggers        INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS sequence (
     id    INTEGER PRIMARY KEY CHECK (id = 1),
     value INTEGER NOT NULL
